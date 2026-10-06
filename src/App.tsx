@@ -9,10 +9,21 @@ import './App.css';
 
 const TERAI_DEFAULT: Coordinate = { lat: 26.65, lng: 87.27 };
 
-const SUPABASE_URL = 'https://uboweiyycqgjytmdhqjj.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVib3dlaXl5Y3Fnanl0bWRocWpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjg3NDA5OTgsImV4cCI6MjA0NDMxNjk5OH0.TDa2t0bSdVNywi9mM6owL-PrR7H1jj74m2CHdNrmcnk';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn(
+    '⚠️  Missing Supabase credentials. Real-time sync will not work.\n' +
+    'Please create a .env file with:\n' +
+    '  VITE_SUPABASE_URL=your-supabase-url\n' +
+    '  VITE_SUPABASE_ANON_KEY=your-anon-key'
+  );
+}
+
+const supabase = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
 
 interface Participant {
   userId: string;
@@ -79,8 +90,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !supabase) return;
 
+    console.log(`[Room ${roomId}] Initializing channel for user ${userId}`);
     const channel = supabase.channel(`room-${roomId}`);
 
     channel
@@ -91,6 +103,8 @@ function App() {
           timestamp: number;
         };
 
+        console.log('[Received] location_update from', senderId, coordinate);
+
         setState((prev) => ({
           ...prev,
           participants: {
@@ -99,14 +113,52 @@ function App() {
           },
         }));
       })
-      .subscribe();
+      .on('broadcast', { event: 'user_joined' }, ({ payload }) => {
+        const { userId: newUserId } = payload as { userId: string };
+
+        console.log('[Received] user_joined from', newUserId);
+
+        setState((prev) => {
+          const myParticipant = prev.participants[userId];
+          if (myParticipant && channelRef.current) {
+            console.log('[Sending] location_update in response to user_joined', {
+              userId,
+              coordinate: myParticipant.coordinate,
+            });
+
+            channelRef.current.send({
+              type: 'broadcast',
+              event: 'location_update',
+              payload: {
+                userId,
+                coordinate: myParticipant.coordinate,
+                timestamp: myParticipant.timestamp,
+              },
+            });
+          }
+          return prev;
+        });
+      })
+      .subscribe((status) => {
+        console.log(`[Room ${roomId}] Realtime status:`, status);
+
+        if (status === 'SUBSCRIBED') {
+          console.log(`[Sending] user_joined event for ${userId}`);
+          channel.send({
+            type: 'broadcast',
+            event: 'user_joined',
+            payload: { userId },
+          });
+        }
+      });
 
     channelRef.current = channel;
 
     return () => {
+      console.log(`[Room ${roomId}] Unsubscribing user ${userId}`);
       channel.unsubscribe();
     };
-  }, [roomId]);
+  }, [roomId, userId]);
 
   useEffect(() => {
     const participantList = Object.values(state.participants);
@@ -161,6 +213,8 @@ function App() {
   const handleMapClick = (coord: Coordinate) => {
     const timestamp = Date.now();
 
+    console.log('[Map Click] Setting location for', userId, coord);
+
     setState((prev) => ({
       ...prev,
       participants: {
@@ -170,11 +224,14 @@ function App() {
     }));
 
     if (channelRef.current) {
+      console.log('[Sending] location_update', { userId, coordinate: coord, timestamp });
       channelRef.current.send({
         type: 'broadcast',
         event: 'location_update',
         payload: { userId, coordinate: coord, timestamp },
       });
+    } else {
+      console.warn('[Warning] channelRef.current is null, cannot broadcast location');
     }
   };
 

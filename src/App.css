@@ -110,6 +110,43 @@ body {
   font-size: 0.8rem;
 }
 
+.room-info {
+  background: #eff6ff;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.room-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.room-label {
+  color: #6b7280;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.room-value {
+  color: #1f2937;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.participant-count {
+  margin-top: 4px;
+}
+
+.participant-label {
+  color: #3b82f6;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 .error-banner {
   background: #fee2e2;
   color: #991b1b;
