@@ -74,7 +74,17 @@ function getUserId(): string {
 }
 
 function App() {
-  const [roomId, setRoomId] = useState<string>('');
+  const [roomId, setRoomId] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    let room = params.get('room');
+    if (!room) {
+      room = generateRoomCode();
+      const url = new URL(window.location.href);
+      url.searchParams.set('room', room);
+      window.history.replaceState({}, '', url.toString());
+    }
+    return room;
+  });
   const [userId] = useState<string>(getUserId());
   const [state, setState] = useState<MultiUserState>({
     participants: {},
@@ -89,18 +99,6 @@ function App() {
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    let room = params.get('room');
-
-    if (!room) {
-      room = generateRoomCode();
-      const url = new URL(window.location.href);
-      url.searchParams.set('room', room);
-      window.history.replaceState({}, '', url.toString());
-    }
-
-    setRoomId(room);
-
     // Do NOT auto-assign coordinates from URL - user must place their own marker
     getCurrentLocation().then((location) => {
       setMapCenter(location);
