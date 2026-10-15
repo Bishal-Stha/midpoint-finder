@@ -265,6 +265,53 @@ body {
   transform: scale(0.98);
 }
 
+.join-section-toggle {
+  margin-top: 8px;
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: #3b82f6;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.btn-text-link:hover {
+  text-decoration: underline;
+  color: #2563eb;
+}
+
+.join-room-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.join-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  outline: none;
+}
+
+.join-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.btn-sm {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  width: auto;
+}
+
 .tip {
   margin-top: 12px;
   text-align: center;

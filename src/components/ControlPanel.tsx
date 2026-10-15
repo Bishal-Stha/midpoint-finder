@@ -15,6 +15,7 @@ interface ControlPanelProps {
   errorMessage: string | null;
   onReset: () => void;
   onCopyShareLink: () => void;
+  onJoinRoom: (newRoomCode: string) => void;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -27,8 +28,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   errorMessage,
   onReset,
   onCopyShareLink,
+  onJoinRoom,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [joinInput, setJoinInput] = useState('');
+  const [showJoinSection, setShowJoinSection] = useState(false);
 
   const handleOpenGoogleMaps = () => {
     if (midpoint) {
@@ -39,6 +43,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
   const handleToggleExpand = () => {
     setIsExpanded(!isExpanded);
+  };
+
+  const handleJoinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (joinInput.trim()) {
+      onJoinRoom(joinInput);
+      setJoinInput('');
+      setShowJoinSection(false);
+    }
   };
 
   if (!isExpanded) {
@@ -77,6 +90,31 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             {participantCount} {participantCount === 1 ? 'participant' : 'participants'}
           </span>
         </div>
+
+        <div className="join-section-toggle">
+          <button
+            className="btn-text-link"
+            onClick={() => setShowJoinSection(!showJoinSection)}
+          >
+            {showJoinSection ? '▲ Hide join room' : '▼ Join another room'}
+          </button>
+        </div>
+
+        {showJoinSection && (
+          <form onSubmit={handleJoinSubmit} className="join-room-form">
+            <input
+              type="text"
+              placeholder="Enter 6-char code"
+              value={joinInput}
+              onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
+              maxLength={10}
+              className="join-input"
+            />
+            <button type="submit" className="btn btn-primary btn-sm" disabled={!joinInput.trim()}>
+              Join
+            </button>
+          </form>
+        )}
       </div>
 
       {errorMessage && (

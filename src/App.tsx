@@ -49,10 +49,27 @@ function generateRoomCode(): string {
 
 function getUserId(): string {
   let userId = sessionStorage.getItem('userId');
-  if (!userId) {
-    userId = 'user-' + Math.random().toString(36).substring(2, 11);
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomId = urlParams.get('room');
+
+  // Generate fresh userId if opening a room link (ensures different tabs get different IDs)
+  if (roomId && !userId) {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      userId = crypto.randomUUID();
+    } else {
+      userId = 'user-' + Math.random().toString(36).substring(2, 15) + Date.now();
+    }
+    sessionStorage.setItem('userId', userId);
+  } else if (!userId) {
+    // Fallback for initial app load without room
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      userId = crypto.randomUUID();
+    } else {
+      userId = 'user-' + Math.random().toString(36).substring(2, 15) + Date.now();
+    }
     sessionStorage.setItem('userId', userId);
   }
+
   return userId;
 }
 
@@ -84,8 +101,12 @@ function App() {
 
     setRoomId(room);
 
+    // Do NOT auto-assign coordinates from URL - user must place their own marker
     getCurrentLocation().then((location) => {
       setMapCenter(location);
+    }).catch(() => {
+      // If geolocation fails, just use default center
+      setMapCenter(TERAI_DEFAULT);
     });
   }, []);
 
@@ -93,7 +114,11 @@ function App() {
     if (!roomId || !supabase) return;
 
     console.log(`[Room ${roomId}] Initializing channel for user ${userId}`);
-    const channel = supabase.channel(`room-${roomId}`);
+    const channel = supabase.channel(`room-${roomId}`, {
+      config: {
+        broadcast: { self: false },
+      },
+    });
 
     channel
       .on('broadcast', { event: 'location_update' }, ({ payload }) => {
@@ -251,6 +276,30 @@ function App() {
     });
   };
 
+  const handleJoinRoom = (newRoomCode: string) => {
+    const cleanCode = newRoomCode.trim().toUpperCase();
+    if (!cleanCode) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', cleanCode);
+    window.history.pushState({}, '', url.toString());
+
+    if (channelRef.current && supabase) {
+      channelRef.current.unsubscribe();
+      channelRef.current = null;
+    }
+
+    setRoomId(cleanCode);
+    setState({
+      participants: {},
+      midpoint: null,
+      routeGeometry: [],
+      metrics: null,
+      isLoading: false,
+      errorMessage: null,
+    });
+  };
+
   const participantList = Object.values(state.participants);
   const myLocation = state.participants[userId]?.coordinate || null;
 
@@ -274,6 +323,7 @@ function App() {
         errorMessage={state.errorMessage}
         onReset={handleReset}
         onCopyShareLink={handleCopyShareLink}
+        onJoinRoom={handleJoinRoom}
       />
     </div>
   );
