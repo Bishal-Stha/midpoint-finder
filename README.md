@@ -1,141 +1,95 @@
 # Midpoint Meetup Finder
 
-A mobile-first web application that calculates fair meeting points between two locations using actual road networks. No more travel imbalance debates – find an equitable midpoint in under 30 seconds.
+A modern, real-time collaborative web application that calculates fair meeting points between two or more friends using actual road networks and geometric centroids. No more travel imbalance debates — find an equitable meetup spot in seconds.
 
-## Features
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-midpoint--finder--blond.vercel.app-brightgreen?style=for-the-badge&logo=vercel)](https://midpoint-finder-blond.vercel.app)
 
-- **GPS Auto-Location**: Automatically detects your current location
-- **Touch-Optimized Map**: Tap to set Point A and Point B on any mobile device
-- **Network-Aware Routing**: Uses real road networks via OSRM (not straight-line distance)
-- **Fair Midpoint Calculation**: Finds the exact 50% distance mark along the route
-- **Travel Metrics**: See total distance, estimated time, and per-person distance
-- **Google Maps Integration**: One-tap handoff to find cafes, tea stalls, and restaurants near the midpoint
-- **Zero Backend**: 100% client-side, no user accounts, no data stored
-- **Free APIs Only**: No paid API keys required
+---
 
-## Tech Stack
+## 📸 Screenshots
 
-- **React 18** with TypeScript
-- **Vite** for fast development and builds
-- **Leaflet** for interactive maps
-- **Turf.js** for geospatial calculations
-- **OSRM** for routing (free public API)
-- **OpenStreetMap** tiles
+| Real-Time Multi-User Sync & Control Panel | Multi-User Midpoint Centroid Calculation |
+| :---: | :---: |
+| ![Control Panel Sync](./docs/screenshots/control-panel-sync.jpg) | ![Multi-User Midpoint](./docs/screenshots/multi-user-midpoint.jpg) |
+| *Expanded Control Panel with custom usernames, 1-click room code copying, smart joiner, and 4 synced participants.* | *Full-map view featuring custom avatar initials pins (AP, BS, DK, SS), collapsible pill UI, and the calculated optimal midpoint (`M`).* |
 
-## Quick Start
+---
 
-### Install Dependencies
-```bash
-npm install
-```
+## ✨ Key Features
 
-### Development Server
-```bash
-npm run dev
-```
+- **Real-Time Multi-User Collaboration**: Synchronize locations seamlessly across multiple tabs or remote devices in real-time via Supabase PostgreSQL changes and room subscriptions.
+- **Custom Avatar Initials Pins**: Beautiful circular markers with distinct color palettes, white borders, drop shadows, and automatic 2-letter uppercase initials (e.g. "John Doe" → `JD`, "Bishal" → `BI`). Hover tooltips reveal full participant names.
+- **Network-Aware Routing & Group Centroid**:
+  - **2 Participants**: Calculates exact road-network routes via OSRM and places the midpoint marker halfway (50%) along the actual driving route with distance and travel time metrics.
+  - **3+ Participants**: Uses Turf.js geometric centroid calculation (`turf.center`) across all participant coordinates.
+- **Smart Room Code & URL Parser**:
+  - Displays a clean 6-character room code with a one-click `📋 Copy Code` button and full shareable link generator (`🔗 Copy Share Link`).
+  - The room joiner accepts either a raw 6-character room code (`HF7TV1`) or a full URL (`https://midpoint-finder-blond.vercel.app/?room=HF7TV1`).
+- **Google Maps Integration**: Instant deep-linking to search for cafes, tea spots, or restaurants near the calculated midpoint.
+- **Collapsible Glassmorphism UI**: Floating control panel can be minimized into a sleek status pill to maximize map visibility on mobile and desktop without interrupting map panning or zooming.
+- **GPS Auto-Location**: Prompts for device geolocation on load with graceful fallbacks.
 
-Open `http://localhost:3000` in your browser (or mobile device on the same network).
+---
 
-### Production Build
-```bash
-npm run build
-npm run preview
-```
+## 🛠️ Tech Stack
 
-## Usage
+- **Frontend**: [React 18](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Vite](https://vitejs.dev/)
+- **Mapping & GIS**: [Leaflet](https://leafletjs.com/), [React-Leaflet](https://react-leaflet.js.org/), [Turf.js](https://turfjs.org/)
+- **Routing API**: [OSRM (Open Source Routing Machine)](http://project-osrm.org/)
+- **Real-Time Backend**: [Supabase](https://supabase.com/) (Postgres Realtime Replication)
+- **Deployment**: [Vercel](https://vercel.com/)
 
-1. **Allow Location Access**: Grant GPS permission when prompted for automatic positioning
-2. **Set Point A**: Tap anywhere on the map to place your starting location
-3. **Set Point B**: Tap again to place your friend's location
-4. **View Midpoint**: The app calculates and displays the fair midpoint marker (M)
-5. **Find Places**: Tap "Find Places Near Midpoint" to search for cafes/restaurants on Google Maps
-6. **Reset**: Use the Reset button to start over
+---
 
-## Project Structure
+## 🚀 Getting Started
 
-```
-src/
-├── components/
-│   ├── MapComponent.tsx      # Leaflet map with interactive pins
-│   └── ControlPanel.tsx      # Floating UI panel with metrics
-├── utils/
-│   ├── routing.ts            # OSRM API client & midpoint calculation
-│   └── geolocation.ts        # GPS location handling
-├── types.ts                  # TypeScript interfaces
-├── App.tsx                   # Main application component
-├── App.css                   # Responsive styles
-└── main.tsx                  # React entry point
-```
+### Prerequisites
+- Node.js 18+
+- [pnpm](https://pnpm.io/) (preferred) or npm
 
-## Deployment
+### Installation & Local Setup
 
-This is a static site that can be deployed to:
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/Bishal-Stha/midpoint-finder.git
+   cd midpoint-finder
+   ```
 
-- **Vercel**: `vercel deploy`
-- **Netlify**: `netlify deploy`
-- **Cloudflare Pages**: Connect via Git
-- **GitHub Pages**: Build and push to `gh-pages` branch
+2. **Configure environment variables**:
+   Create a `.env` file in the project root:
+   ```env
+   VITE_SUPABASE_URL=https://qvpnbthfguwrzlqgsxrk.supabase.co
+   VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
 
-## Browser Compatibility
+3. **Install dependencies**:
+   ```bash
+   pnpm install
+   ```
 
-- ✅ iOS Safari 14+
-- ✅ Android Chrome 90+
-- ✅ Firefox 88+
-- ✅ Desktop Chrome/Edge/Safari
+4. **Start the development server**:
+   ```bash
+   pnpm run dev
+   ```
+   Open `http://localhost:5173` in your browser.
 
-**Note**: HTTPS is required for GPS geolocation (works on `localhost` for development).
+5. **Build for production**:
+   ```bash
+   pnpm run build
+   ```
 
-## API Details
+---
 
-### OSRM Routing API
-- **Endpoint**: `https://router.project-osrm.org/route/v1/driving/`
-- **Rate Limit**: Soft limits on public demo server
-- **Cost**: Free
-- **Optimization**: Requests only fire when both points are set
+## 📖 How It Works
 
-### Google Maps Deep Link
-- **Format**: `https://www.google.com/maps/search/tea+cafe+restaurant/@{lat},{lng},15z`
-- **Cost**: Free (no API key required)
-- **Behavior**: Opens native app on mobile, web browser on desktop
+1. **Enter Your Name**: Enter or edit your display name in the control panel.
+2. **Place Your Pin**: Tap anywhere on the map to pin your location.
+3. **Invite Friends**: Click `📋 Copy Code` or `🔗 Copy Share Link` and send it to friends.
+4. **Instant Sync**: When friends open the link and place their pins, everyone's map updates in real time.
+5. **Meetup & Discover**: The midpoint marker (`M`) appears automatically. Click `🔍 Find Places Near Midpoint` to explore meetup venues directly in Google Maps.
 
-## Customization
+---
 
-### Default Region
-Edit `TERAI_DEFAULT` in `src/App.tsx` and `src/utils/geolocation.ts`:
-```typescript
-const TERAI_DEFAULT: Coordinate = { lat: 26.65, lng: 87.27 };
-```
+## 📄 License
 
-### Search Query
-Modify the query in `src/utils/routing.ts`:
-```typescript
-export function buildGoogleMapsSearchUrl(
-  lat: number, 
-  lng: number, 
-  query = 'your custom search'
-): string { ... }
-```
-
-## Known Limitations
-
-- **OSRM Coverage**: Routing quality depends on OpenStreetMap data completeness
-- **Public API**: The free OSRM demo server may have rate limits during heavy traffic
-- **Single Route**: Only shows the primary driving route (no alternatives)
-
-## Future Enhancements (Out of Scope for Phase 1)
-
-- Real-time shared rooms via WebSockets
-- User accounts and meetup history
-- Multi-modal transit options (bus/train schedules)
-- In-app place reviews and photos
-
-## License
-
-Open source project. See LICENSE file for details.
-
-## Credits
-
-- Maps: [OpenStreetMap](https://www.openstreetmap.org/) contributors
-- Routing: [OSRM Project](http://project-osrm.org/)
-- Geospatial: [Turf.js](https://turfjs.org/)
-- Framework: [React](https://react.dev/) + [Vite](https://vitejs.dev/)
+Open-source project licensed under the [MIT License](LICENSE).
