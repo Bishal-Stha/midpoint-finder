@@ -31,6 +31,32 @@ export function calculateMidpoint(coordinates: [number, number][]): Coordinate {
   return { lat, lng };
 }
 
+export function calculateMultiUserMidpoint(participants: { coordinate: Coordinate }[]): Coordinate {
+  if (participants.length === 0) {
+    return { lat: 0, lng: 0 };
+  }
+  if (participants.length === 1) {
+    return participants[0].coordinate;
+  }
+  if (participants.length === 2) {
+    // If we have routing geometry or fallback, but here calculateMultiUserMidpoint is for centroid or general
+    // For 2 users, we can use average or centroid as fallback if routing isn't used
+    const coords = participants.map(p => [p.coordinate.lng, p.coordinate.lat] as [number, number]);
+    const line = turf.lineString(coords);
+    const centerPoint = turf.center(line);
+    const [lng, lat] = centerPoint.geometry.coordinates;
+    return { lat, lng };
+  }
+
+  // 3 or more users: turf.center of featureCollection of points
+  const points = participants.map(p => turf.point([p.coordinate.lng, p.coordinate.lat]));
+  const fc = turf.featureCollection(points);
+  const centerPoint = turf.center(fc);
+  const [lng, lat] = centerPoint.geometry.coordinates;
+
+  return { lat, lng };
+}
+
 export function buildGoogleMapsSearchUrl(lat: number, lng: number, query = 'tea cafe restaurant'): string {
   const encodedQuery = encodeURIComponent(query);
   return `https://www.google.com/maps/search/${encodedQuery}/@${lat},${lng},15z`;

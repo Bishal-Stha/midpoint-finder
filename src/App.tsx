@@ -4,7 +4,7 @@ import { MapComponent } from './components/MapComponent';
 import { ControlPanel } from './components/ControlPanel';
 import { Coordinate } from './types';
 import { getCurrentLocation } from './utils/geolocation';
-import { fetchRoute, calculateMidpoint } from './utils/routing';
+import { fetchRoute, calculateMidpoint, calculateMultiUserMidpoint } from './utils/routing';
 import './App.css';
 
 const TERAI_DEFAULT: Coordinate = { lat: 26.65, lng: 87.27 };
@@ -52,7 +52,6 @@ function getUserId(): string {
   const urlParams = new URLSearchParams(window.location.search);
   const roomId = urlParams.get('room');
 
-  // Generate fresh userId if opening a room link (ensures different tabs get different IDs)
   if (roomId && !userId) {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       userId = crypto.randomUUID();
@@ -61,7 +60,6 @@ function getUserId(): string {
     }
     sessionStorage.setItem('userId', userId);
   } else if (!userId) {
-    // Fallback for initial app load without room
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       userId = crypto.randomUUID();
     } else {
@@ -99,97 +97,93 @@ function App() {
   const channelRef = useRef<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    // Do NOT auto-assign coordinates from URL - user must place their own marker
     getCurrentLocation().then((location) => {
       setMapCenter(location);
     }).catch(() => {
-      // If geolocation fails, just use default center
       setMapCenter(TERAI_DEFAULT);
     });
   }, []);
 
+  // Fetch initial room participants and setup Postgres Changes subscription
   useEffect(() => {
     if (!roomId || !supabase) return;
 
-    console.log(`[Room ${roomId}] Initializing channel for user ${userId}`);
-    const channel = supabase.channel(`room-${roomId}`, {
-      config: {
-        broadcast: { self: false },
-      },
-    });
+    const cleanRoom = roomId.trim().toUpperCase();
+    console.log(`[Room ${cleanRoom}] Fetching participants from DB for user ${userId}`);
 
-    channel
-      .on('broadcast', { event: 'location_update' }, ({ payload }) => {
-        const { userId: senderId, coordinate, timestamp } = payload as {
-          userId: string;
-          coordinate: Coordinate;
-          timestamp: number;
-        };
+    const fetchParticipants = async () => {
+      const { data, error } = await supabase
+        .from('room_participants')
+        .select('*')
+        .eq('room_code', cleanRoom);
 
-        console.log('[Received] location_update from', senderId, coordinate);
+      if (error) {
+        console.error('Error fetching room participants:', error);
+        return;
+      }
+
+      if (data) {
+        const participantsMap: Record<string, Participant> = {};
+        data.forEach((row: any) => {
+          participantsMap[row.user_id] = {
+            userId: row.user_id,
+            coordinate: { lat: row.lat, lng: row.lng },
+            timestamp: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+          };
+        });
 
         setState((prev) => ({
           ...prev,
-          participants: {
-            ...prev.participants,
-            [senderId]: { userId: senderId, coordinate, timestamp },
-          },
+          participants: participantsMap,
         }));
-      })
-      .on('broadcast', { event: 'user_joined' }, ({ payload }) => {
-        const { userId: newUserId } = payload as { userId: string };
+      }
+    };
 
-        console.log('[Received] user_joined from', newUserId);
+    fetchParticipants();
 
-        setState((prev) => {
-          const myParticipant = prev.participants[userId];
-          if (myParticipant && channelRef.current) {
-            console.log('[Sending] location_update in response to user_joined', {
-              userId,
-              coordinate: myParticipant.coordinate,
-            });
-
-            channelRef.current.send({
-              type: 'broadcast',
-              event: 'location_update',
-              payload: {
-                userId,
-                coordinate: myParticipant.coordinate,
-                timestamp: myParticipant.timestamp,
-              },
-            });
+    console.log(`[Room ${cleanRoom}] Subscribing to postgres_changes`);
+    const channel = supabase
+      .channel(`db-room-${cleanRoom}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_participants', filter: `room_code=eq.${cleanRoom}` },
+        (payload) => {
+          console.log('[Postgres Change received]', payload);
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const row = payload.new as any;
+            if (row && row.room_code === cleanRoom) {
+              setState((prev) => ({
+                ...prev,
+                participants: {
+                  ...prev.participants,
+                  [row.user_id]: {
+                    userId: row.user_id,
+                    coordinate: { lat: row.lat, lng: row.lng },
+                    timestamp: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
+                  },
+                },
+              }));
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const row = payload.old as any;
+            if (row && row.user_id) {
+              setState((prev) => {
+                const updated = { ...prev.participants };
+                delete updated[row.user_id];
+                return { ...prev, participants: updated };
+              });
+            }
           }
-          return prev;
-        });
-      })
+        }
+      )
       .subscribe((status) => {
-        console.log(`[Room ${roomId}] Realtime status:`, status);
-
+        console.log(`[Room ${cleanRoom}] Realtime DB status:`, status);
         if (status === 'SUBSCRIBED') {
-          console.log(`[Sending] user_joined event for ${userId}`);
-          channel.send({
-            type: 'broadcast',
-            event: 'user_joined',
-            payload: { userId },
-          });
-
-          // Check if local user has a location pinned and broadcast it immediately
+          // If local user already has a location placed, ensure it's upserted on subscribe
           setState((prev) => {
             const myParticipant = prev.participants[userId];
             if (myParticipant) {
-              console.log('[Sending] location_update on room join/subscribe', {
-                userId,
-                coordinate: myParticipant.coordinate,
-              });
-              channel.send({
-                type: 'broadcast',
-                event: 'location_update',
-                payload: {
-                  userId,
-                  coordinate: myParticipant.coordinate,
-                  timestamp: myParticipant.timestamp,
-                },
-              });
+              upsertParticipantLocation(cleanRoom, userId, myParticipant.coordinate);
             }
             return prev;
           });
@@ -199,15 +193,37 @@ function App() {
     channelRef.current = channel;
 
     return () => {
-      console.log(`[Room ${roomId}] Unsubscribing user ${userId}`);
+      console.log(`[Room ${cleanRoom}] Unsubscribing DB channel`);
       channel.unsubscribe();
     };
   }, [roomId, userId]);
 
+  const upsertParticipantLocation = async (roomCode: string, uId: string, coord: Coordinate) => {
+    if (!supabase) return;
+    try {
+      console.log('[Supabase Upsert]', { room_code: roomCode, user_id: uId, ...coord });
+      const { error } = await supabase.from('room_participants').upsert(
+        {
+          room_code: roomCode,
+          user_id: uId,
+          lat: coord.lat,
+          lng: coord.lng,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'room_code,user_id' }
+      );
+      if (error) {
+        console.error('Error upserting participant location:', error);
+      }
+    } catch (err) {
+      console.error('Exception during upsert:', err);
+    }
+  };
+
   useEffect(() => {
     const participantList = Object.values(state.participants);
     if (participantList.length >= 2) {
-      computeRouteForMultipleUsers(participantList);
+      computeRouteOrMidpoint(participantList);
     } else {
       setState((prev) => ({
         ...prev,
@@ -218,7 +234,7 @@ function App() {
     }
   }, [state.participants]);
 
-  const computeRouteForMultipleUsers = async (participants: Participant[]) => {
+  const computeRouteOrMidpoint = async (participants: Participant[]) => {
     if (participants.length < 2) return;
 
     setState((prev) => ({
@@ -227,36 +243,52 @@ function App() {
       errorMessage: null,
     }));
 
-    try {
-      const [user1, user2] = participants.slice(0, 2);
-      const routeData = await fetchRoute(user1.coordinate, user2.coordinate);
-      const route = routeData.routes[0];
-      const coordinates = route.geometry.coordinates;
+    if (participants.length === 2) {
+      try {
+        const [user1, user2] = participants;
+        const routeData = await fetchRoute(user1.coordinate, user2.coordinate);
+        const route = routeData.routes[0];
+        const coordinates = route.geometry.coordinates;
 
-      const midpoint = calculateMidpoint(coordinates);
+        const midpoint = calculateMidpoint(coordinates);
 
+        setState((prev) => ({
+          ...prev,
+          midpoint,
+          routeGeometry: coordinates,
+          metrics: {
+            distanceKm: route.distance / 1000,
+            durationMinutes: route.duration / 60,
+          },
+          isLoading: false,
+        }));
+      } catch (error) {
+        // Fallback to centroid if routing fails
+        const midpoint = calculateMultiUserMidpoint(participants);
+        setState((prev) => ({
+          ...prev,
+          midpoint,
+          routeGeometry: [],
+          metrics: null,
+          isLoading: false,
+          errorMessage: error instanceof Error ? error.message : 'Failed to calculate route, using centroid',
+        }));
+      }
+    } else {
+      // 3 or more users: compute multi-user centroid midpoint
+      const midpoint = calculateMultiUserMidpoint(participants);
       setState((prev) => ({
         ...prev,
         midpoint,
-        routeGeometry: coordinates,
-        metrics: {
-          distanceKm: route.distance / 1000,
-          durationMinutes: route.duration / 60,
-        },
+        routeGeometry: [],
+        metrics: null,
         isLoading: false,
-      }));
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        errorMessage: error instanceof Error ? error.message : 'Failed to calculate route',
       }));
     }
   };
 
   const handleMapClick = (coord: Coordinate) => {
     const timestamp = Date.now();
-
     console.log('[Map Click] Setting location for', userId, coord);
 
     setState((prev) => ({
@@ -267,16 +299,7 @@ function App() {
       },
     }));
 
-    if (channelRef.current) {
-      console.log('[Sending] location_update', { userId, coordinate: coord, timestamp });
-      channelRef.current.send({
-        type: 'broadcast',
-        event: 'location_update',
-        payload: { userId, coordinate: coord, timestamp },
-      });
-    } else {
-      console.warn('[Warning] channelRef.current is null, cannot broadcast location');
-    }
+    upsertParticipantLocation(roomId, userId, coord);
   };
 
   const handleCopyShareLink = () => {
@@ -284,14 +307,27 @@ function App() {
     navigator.clipboard.writeText(shareUrl);
   };
 
-  const handleReset = () => {
-    setState({
-      participants: {},
-      midpoint: null,
-      routeGeometry: [],
-      metrics: null,
-      isLoading: false,
-      errorMessage: null,
+  const handleReset = async () => {
+    if (supabase) {
+      await supabase
+        .from('room_participants')
+        .delete()
+        .eq('room_code', roomId)
+        .eq('user_id', userId);
+    }
+
+    setState((prev) => {
+      const updated = { ...prev.participants };
+      delete updated[userId];
+      return {
+        ...prev,
+        participants: updated,
+        midpoint: null,
+        routeGeometry: [],
+        metrics: null,
+        isLoading: false,
+        errorMessage: null,
+      };
     });
   };
 
@@ -311,8 +347,12 @@ function App() {
     setRoomId(cleanCode);
     setState((prev) => {
       const myParticipant = prev.participants[userId];
+      const newParticipants = myParticipant ? { [userId]: myParticipant } : {};
+      if (myParticipant) {
+        upsertParticipantLocation(cleanCode, userId, myParticipant.coordinate);
+      }
       return {
-        participants: myParticipant ? { [userId]: myParticipant } : {},
+        participants: newParticipants,
         midpoint: null,
         routeGeometry: [],
         metrics: null,
