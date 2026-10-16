@@ -172,6 +172,27 @@ function App() {
             event: 'user_joined',
             payload: { userId },
           });
+
+          // Check if local user has a location pinned and broadcast it immediately
+          setState((prev) => {
+            const myParticipant = prev.participants[userId];
+            if (myParticipant) {
+              console.log('[Sending] location_update on room join/subscribe', {
+                userId,
+                coordinate: myParticipant.coordinate,
+              });
+              channel.send({
+                type: 'broadcast',
+                event: 'location_update',
+                payload: {
+                  userId,
+                  coordinate: myParticipant.coordinate,
+                  timestamp: myParticipant.timestamp,
+                },
+              });
+            }
+            return prev;
+          });
         }
       });
 
@@ -259,8 +280,8 @@ function App() {
   };
 
   const handleCopyShareLink = () => {
-    const url = new URL(window.location.href);
-    navigator.clipboard.writeText(url.toString());
+    const shareUrl = `${window.location.origin}/?room=${roomId.toUpperCase()}`;
+    navigator.clipboard.writeText(shareUrl);
   };
 
   const handleReset = () => {
@@ -288,13 +309,16 @@ function App() {
     }
 
     setRoomId(cleanCode);
-    setState({
-      participants: {},
-      midpoint: null,
-      routeGeometry: [],
-      metrics: null,
-      isLoading: false,
-      errorMessage: null,
+    setState((prev) => {
+      const myParticipant = prev.participants[userId];
+      return {
+        participants: myParticipant ? { [userId]: myParticipant } : {},
+        midpoint: null,
+        routeGeometry: [],
+        metrics: null,
+        isLoading: false,
+        errorMessage: null,
+      };
     });
   };
 
