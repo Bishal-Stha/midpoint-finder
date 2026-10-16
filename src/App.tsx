@@ -95,6 +95,11 @@ function App() {
 
   const [mapCenter, setMapCenter] = useState<Coordinate>(TERAI_DEFAULT);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const roomIdRef = useRef<string>(roomId);
+
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
 
   useEffect(() => {
     getCurrentLocation().then((location) => {
@@ -289,7 +294,8 @@ function App() {
 
   const handleMapClick = (coord: Coordinate) => {
     const timestamp = Date.now();
-    console.log('[Map Click] Setting location for', userId, coord);
+    const activeRoom = roomIdRef.current;
+    console.log('[Map Click] Setting location for', userId, coord, 'in room', activeRoom);
 
     setState((prev) => ({
       ...prev,
@@ -299,7 +305,7 @@ function App() {
       },
     }));
 
-    upsertParticipantLocation(roomId, userId, coord);
+    upsertParticipantLocation(activeRoom, userId, coord);
   };
 
   const handleCopyShareLink = () => {
