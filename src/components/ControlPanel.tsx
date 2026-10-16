@@ -13,6 +13,8 @@ interface ControlPanelProps {
   } | null;
   isLoading: boolean;
   errorMessage: string | null;
+  userName: string;
+  onUpdateUserName: (name: string) => void;
   onReset: () => void;
   onCopyShareLink: () => void;
   onJoinRoom: (newRoomCode: string) => void;
@@ -26,6 +28,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   metrics,
   isLoading,
   errorMessage,
+  userName,
+  onUpdateUserName,
   onReset,
   onCopyShareLink,
   onJoinRoom,
@@ -33,6 +37,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [isExpanded, setIsExpanded] = useState(true);
   const [joinInput, setJoinInput] = useState('');
   const [showJoinSection, setShowJoinSection] = useState(false);
+  const [nameInput, setNameInput] = useState(userName);
+  const [isEditingName, setIsEditingName] = useState(!userName);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const handleOpenGoogleMaps = () => {
     if (midpoint) {
@@ -52,6 +60,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       setJoinInput('');
       setShowJoinSection(false);
     }
+  };
+
+  const handleNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (nameInput.trim()) {
+      onUpdateUserName(nameInput.trim());
+      setIsEditingName(false);
+    }
+  };
+
+  const handleCopyCodeOnly = () => {
+    navigator.clipboard.writeText(roomId.toUpperCase());
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleCopyShareLinkWithFeedback = () => {
+    onCopyShareLink();
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   if (!isExpanded) {
@@ -80,10 +108,48 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </button>
       </div>
 
+      <div className="user-name-section">
+        {isEditingName ? (
+          <form onSubmit={handleNameSubmit} className="name-form">
+            <input
+              type="text"
+              placeholder="Enter your full name (e.g., John Doe)"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              className="name-input"
+              autoFocus
+              required
+            />
+            <button type="submit" className="btn btn-primary btn-sm">
+              Save
+            </button>
+          </form>
+        ) : (
+          <div className="name-display">
+            <span className="name-label">👤 You:</span>
+            <span className="name-value">{userName}</span>
+            <button
+              className="btn-text-link edit-name-btn"
+              onClick={() => setIsEditingName(true)}
+            >
+              Edit
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="room-info">
-        <div className="room-code">
-          <span className="room-label">Room:</span>
-          <span className="room-value">{roomId}</span>
+        <div className="room-code-row">
+          <div className="room-code">
+            <span className="room-label">Room:</span>
+            <span className="room-value">{roomId}</span>
+          </div>
+          <button
+            className="btn btn-secondary btn-sm copy-code-btn"
+            onClick={handleCopyCodeOnly}
+          >
+            {copiedCode ? '✓ Copied!' : '📋 Copy Code'}
+          </button>
         </div>
         <div className="participant-count">
           <span className="participant-label">
@@ -104,10 +170,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           <form onSubmit={handleJoinSubmit} className="join-room-form">
             <input
               type="text"
-              placeholder="Enter 6-char code"
+              placeholder="Enter room code or paste full URL"
               value={joinInput}
-              onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
-              maxLength={10}
+              onChange={(e) => setJoinInput(e.target.value)}
               className="join-input"
             />
             <button type="submit" className="btn btn-primary btn-sm" disabled={!joinInput.trim()}>
@@ -126,7 +191,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       <div className="instructions">
         {!myLocation && <p>📍 Tap the map to set your location</p>}
         {myLocation && participantCount < 2 && (
-          <p>👥 Share the room link and wait for others to join</p>
+          <p>👥 Share the room code or link and wait for others to join</p>
         )}
         {participantCount >= 2 && midpoint && <p>✅ Midpoint calculated!</p>}
       </div>
@@ -156,8 +221,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       )}
 
       <div className="actions">
-        <button className="btn btn-primary" onClick={onCopyShareLink}>
-          📋 Copy Room Link
+        <button className="btn btn-primary" onClick={handleCopyShareLinkWithFeedback}>
+          {copiedLink ? '✓ Link Copied!' : '🔗 Copy Share Link'}
         </button>
 
         {midpoint && (
@@ -174,7 +239,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       </div>
 
       <div className="tip">
-        <small>💡 Share the room link for real-time collaboration</small>
+        <small>💡 Share room code or link for real-time collaboration</small>
       </div>
     </div>
   );

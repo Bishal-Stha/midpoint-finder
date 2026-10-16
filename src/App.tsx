@@ -27,6 +27,7 @@ const supabase = supabaseUrl && supabaseAnonKey
 
 interface Participant {
   userId: string;
+  userName?: string;
   coordinate: Coordinate;
   timestamp: number;
 }
@@ -71,6 +72,16 @@ function getUserId(): string {
   return userId;
 }
 
+function getUserName(): string {
+  const stored = sessionStorage.getItem('userName');
+  if (stored && stored.trim()) return stored.trim();
+  const randomAdjectives = ['Happy', 'Swift', 'Bright', 'Cosmic', 'Bold', 'Calm', 'Eager'];
+  const randomNouns = ['Traveler', 'Explorer', 'Friend', 'Nomad', 'Pioneer', 'Rider'];
+  const generated = `${randomAdjectives[Math.floor(Math.random() * randomAdjectives.length)]} ${randomNouns[Math.floor(Math.random() * randomNouns.length)]}`;
+  sessionStorage.setItem('userName', generated);
+  return generated;
+}
+
 function App() {
   const [roomId, setRoomId] = useState<string>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -84,6 +95,8 @@ function App() {
     return room;
   });
   const [userId] = useState<string>(getUserId());
+  const [userName, setUserName] = useState<string>(getUserName());
+
   const [state, setState] = useState<MultiUserState>({
     participants: {},
     midpoint: null,
@@ -96,10 +109,16 @@ function App() {
   const [mapCenter, setMapCenter] = useState<Coordinate>(TERAI_DEFAULT);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const roomIdRef = useRef<string>(roomId);
+  const userNameRef = useRef<string>(userName);
 
   useEffect(() => {
     roomIdRef.current = roomId;
   }, [roomId]);
+
+  useEffect(() => {
+    userNameRef.current = userName;
+    sessionStorage.setItem('userName', userName);
+  }, [userName]);
 
   useEffect(() => {
     getCurrentLocation().then((location) => {
@@ -114,7 +133,7 @@ function App() {
     if (!roomId || !supabase) return;
 
     const cleanRoom = roomId.trim().toUpperCase();
-    console.log(`[Room ${cleanRoom}] Fetching participants from DB for user ${userId}`);
+    console.log(`[Room ${cleanRoom}] Fetching participants from DB for user ${userId} (${userName})`);
 
     const fetchParticipants = async () => {
       const { data, error } = await supabase
@@ -132,6 +151,7 @@ function App() {
         data.forEach((row: any) => {
           participantsMap[row.user_id] = {
             userId: row.user_id,
+            userName: row.user_name || 'Participant',
             coordinate: { lat: row.lat, lng: row.lng },
             timestamp: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
           };
@@ -163,6 +183,7 @@ function App() {
                   ...prev.participants,
                   [row.user_id]: {
                     userId: row.user_id,
+                    userName: row.user_name || 'Participant',
                     coordinate: { lat: row.lat, lng: row.lng },
                     timestamp: row.updated_at ? new Date(row.updated_at).getTime() : Date.now(),
                   },
@@ -184,11 +205,10 @@ function App() {
       .subscribe((status) => {
         console.log(`[Room ${cleanRoom}] Realtime DB status:`, status);
         if (status === 'SUBSCRIBED') {
-          // If local user already has a location placed, ensure it's upserted on subscribe
           setState((prev) => {
             const myParticipant = prev.participants[userId];
             if (myParticipant) {
-              upsertParticipantLocation(cleanRoom, userId, myParticipant.coordinate);
+              upsertParticipantLocation(cleanRoom, userId, userNameRef.current, myParticipant.coordinate);
             }
             return prev;
           });
@@ -203,14 +223,15 @@ function App() {
     };
   }, [roomId, userId]);
 
-  const upsertParticipantLocation = async (roomCode: string, uId: string, coord: Coordinate) => {
+  const upsertParticipantLocation = async (roomCode: string, uId: string, uName: string, coord: Coordinate) => {
     if (!supabase) return;
     try {
-      console.log('[Supabase Upsert]', { room_code: roomCode, user_id: uId, ...coord });
+      console.log('[Supabase Upsert]', { room_code: roomCode, user_id: uId, user_name: uName, ...coord });
       const { error } = await supabase.from('room_participants').upsert(
         {
           room_code: roomCode,
           user_id: uId,
+          user_name: uName,
           lat: coord.lat,
           lng: coord.lng,
           updated_at: new Date().toISOString(),
@@ -268,7 +289,6 @@ function App() {
           isLoading: false,
         }));
       } catch (error) {
-        // Fallback to centroid if routing fails
         const midpoint = calculateMultiUserMidpoint(participants);
         setState((prev) => ({
           ...prev,
@@ -280,7 +300,6 @@ function App() {
         }));
       }
     } else {
-      // 3 or more users: compute multi-user centroid midpoint
       const midpoint = calculateMultiUserMidpoint(participants);
       setState((prev) => ({
         ...prev,
@@ -295,17 +314,33 @@ function App() {
   const handleMapClick = (coord: Coordinate) => {
     const timestamp = Date.now();
     const activeRoom = roomIdRef.current;
-    console.log('[Map Click] Setting location for', userId, coord, 'in room', activeRoom);
+    const activeName = userNameRef.current;
+    console.log('[Map Click] Setting location for', userId, activeName, coord, 'in room', activeRoom);
 
     setState((prev) => ({
       ...prev,
       participants: {
         ...prev.participants,
-        [userId]: { userId, coordinate: coord, timestamp },
+        [userId]: { userId, userName: activeName, coordinate: coord, timestamp },
       },
     }));
 
-    upsertParticipantLocation(activeRoom, userId, coord);
+    upsertParticipantLocation(activeRoom, userId, activeName, coord);
+  };
+
+  const handleUpdateUserName = (newName: string) => {
+    setUserName(newName);
+    const myParticipant = state.participants[userId];
+    if (myParticipant) {
+      setState((prev) => ({
+        ...prev,
+        participants: {
+          ...prev.participants,
+          [userId]: { ...myParticipant, userName: newName },
+        },
+      }));
+      upsertParticipantLocation(roomIdRef.current, userId, newName, myParticipant.coordinate);
+    }
   };
 
   const handleCopyShareLink = () => {
@@ -337,8 +372,18 @@ function App() {
     });
   };
 
-  const handleJoinRoom = (newRoomCode: string) => {
-    const cleanCode = newRoomCode.trim().toUpperCase();
+  const handleJoinRoom = (rawInput: string) => {
+    let extractedCode = rawInput.trim();
+    if (extractedCode.includes('room=')) {
+      try {
+        const url = new URL(extractedCode.includes('http') ? extractedCode : `https://dummy.com/?${extractedCode}`);
+        extractedCode = url.searchParams.get('room') || extractedCode;
+      } catch {
+        const match = extractedCode.match(/[?&]room=([^&]+)/i);
+        if (match) extractedCode = match[1];
+      }
+    }
+    const cleanCode = extractedCode.slice(0, 6).toUpperCase();
     if (!cleanCode) return;
 
     const url = new URL(window.location.href);
@@ -355,7 +400,7 @@ function App() {
       const myParticipant = prev.participants[userId];
       const newParticipants = myParticipant ? { [userId]: myParticipant } : {};
       if (myParticipant) {
-        upsertParticipantLocation(cleanCode, userId, myParticipant.coordinate);
+        upsertParticipantLocation(cleanCode, userId, userNameRef.current, myParticipant.coordinate);
       }
       return {
         participants: newParticipants,
@@ -389,6 +434,8 @@ function App() {
         metrics={state.metrics}
         isLoading={state.isLoading}
         errorMessage={state.errorMessage}
+        userName={userName}
+        onUpdateUserName={handleUpdateUserName}
         onReset={handleReset}
         onCopyShareLink={handleCopyShareLink}
         onJoinRoom={handleJoinRoom}
